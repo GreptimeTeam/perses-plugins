@@ -80,15 +80,6 @@
           },
           "name": "GreptimeDBTraceQuery"
         }
-      },
-      {
-        "kind": "Explore",
-        "spec": {
-          "display": {
-            "name": "GreptimeDB Trace Explorer"
-          },
-          "name": "GreptimeDBTraceExplorer"
-        }
       }
     ]
   }
