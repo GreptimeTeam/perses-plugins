@@ -69,11 +69,12 @@ export function getTimeSeries(
   visual: TimeSeriesChartVisualOptions,
   timeScale: TimeScale,
   paletteColor: string,
-  querySettings?: { lineStyle?: LineStyleType; areaOpacity?: number },
+  querySettings?: { lineStyle?: LineStyleType; areaOpacity?: number; stack?: boolean },
   yAxisIndex?: number
 ): TimeSeriesOption {
   const lineWidth = visual.lineWidth ?? DEFAULT_LINE_WIDTH;
   const pointRadius = visual.pointRadius ?? DEFAULT_POINT_RADIUS;
+  const shouldStack = querySettings?.stack !== undefined ? querySettings.stack : visual.stack === 'all';
 
   // Shows datapoint symbols when selected time range is roughly 15 minutes or less
   const minuteMs = 60000;
@@ -90,7 +91,7 @@ export function getTimeSeries(
       datasetIndex,
       name: formattedName,
       color: paletteColor,
-      stack: visual.stack === 'all' ? visual.stack : undefined,
+      stack: shouldStack ? 'all' : undefined,
       yAxisIndex: yAxisIndex,
       label: {
         show: false,
@@ -106,7 +107,7 @@ export function getTimeSeries(
     name: formattedName,
     connectNulls: visual.connectNulls ?? DEFAULT_CONNECT_NULLS,
     color: paletteColor,
-    stack: visual.stack === 'all' ? visual.stack : undefined,
+    stack: shouldStack ? 'all' : undefined,
     yAxisIndex: yAxisIndex,
     sampling: 'lttb',
     progressiveThreshold: OPTIMIZED_MODE_SERIES_LIMIT, // https://echarts.apache.org/en/option.html#series-lines.progressiveThreshold
@@ -128,13 +129,6 @@ export function getTimeSeries(
         width: lineWidth + 1,
         opacity: 1,
         type: visual.lineStyle,
-      },
-    },
-    selectedMode: 'single',
-    select: {
-      itemStyle: {
-        borderColor: paletteColor,
-        borderWidth: pointRadius + 0.5,
       },
     },
     blur: {
@@ -206,8 +200,10 @@ function findMax(data: LegacyTimeSeries[] | TimeSeries[]): number {
       series.values.forEach((valueTuple: TimeSeriesValueTuple) => {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const [_, value] = valueTuple;
-        if (typeof value === 'number' && value > max) {
-          max = value;
+        // Use the absolute value so percent thresholds compute correctly against
+        // negated series (e.g. when `querySettings[].negativeY` is enabled).
+        if (typeof value === 'number' && Math.abs(value) > max) {
+          max = Math.abs(value);
         }
       });
     });
@@ -215,8 +211,8 @@ function findMax(data: LegacyTimeSeries[] | TimeSeries[]): number {
     (data as LegacyTimeSeries[]).forEach((series) => {
       if (series.data !== undefined) {
         series.data.forEach((value: EChartsValues) => {
-          if (typeof value === 'number' && value > max) {
-            max = value;
+          if (typeof value === 'number' && Math.abs(value) > max) {
+            max = Math.abs(value);
           }
         });
       }

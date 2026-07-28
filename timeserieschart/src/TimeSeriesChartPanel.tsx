@@ -45,6 +45,7 @@ import {
   getTimeSeriesValues,
 } from '@perses-dev/components';
 import { TimeSeries, TimeSeriesData, TimeSeriesValueTuple } from '@perses-dev/spec';
+import { useAnnotationsWithData } from '@perses-dev/dashboards';
 import {
   TimeSeriesChartOptions,
   DEFAULT_FORMAT,
@@ -61,6 +62,7 @@ import {
 } from './utils/data-transform';
 import { getSeriesColor } from './utils/palette-gen';
 import { TimeSeriesChartBase } from './TimeSeriesChartBase';
+import { convertAnnotationToTimeSeriesAnnotation, TimeSeriesAnnotation } from './utils/annotation';
 
 export type TimeSeriesChartProps = PanelProps<TimeSeriesChartOptions, TimeSeriesData>;
 
@@ -153,6 +155,13 @@ export function TimeSeriesChartPanel(props: TimeSeriesChartProps): ReactElement 
   const [legendSorting, setLegendSorting] = useState<NonNullable<LegendProps['tableProps']>['sorting']>();
 
   const { setTimeRange } = useTimeRange();
+
+  const annotationsWithData = useAnnotationsWithData();
+
+  const annotations: TimeSeriesAnnotation[] = useMemo(
+    () => convertAnnotationToTimeSeriesAnnotation(annotationsWithData),
+    [annotationsWithData]
+  );
 
   // Populate series data based on query results
   const {
@@ -278,9 +287,21 @@ export function TimeSeriesChartPanel(props: TimeSeriesChartProps): ReactElement 
               }
             }
 
+            // When negativeY is set on this query, negate the rendered values so the
+            // series renders below the X axis. The original (positive) values are
+            // preserved in `timeSeries.values` (used for legend calculations) and in
+            // `queryResults` (used for CSV export).
+            const baseValues: TimeSeriesValueTuple[] = getTimeSeriesValues(timeSeries, timeScale);
+            const renderedValues: TimeSeriesValueTuple[] = querySettings?.negativeY
+              ? baseValues.map((tuple: TimeSeriesValueTuple): TimeSeriesValueTuple => {
+                  const [t, v] = tuple;
+                  return [t, v === null ? null : -v];
+                })
+              : baseValues;
+
             timeChartData.push({
               name: formattedSeriesName,
-              values: getTimeSeriesValues(timeSeries, timeScale),
+              values: renderedValues,
             });
           }
 
@@ -441,8 +462,11 @@ export function TimeSeriesChartPanel(props: TimeSeriesChartProps): ReactElement 
     setTimeRange({ start: new Date(event.start), end: new Date(event.end) });
   };
 
-  // Used to opt in to ECharts trigger item which show subgroup data accurately
-  const isStackedBar = visual.display === 'bar' && visual.stack === 'all';
+  // Used to opt in to ECharts trigger item which show subgroup data accurately.
+  // Derived from the actual series mapping rather than `visual.stack` alone so that
+  // bar charts stacked only via per-query overrides also use the right tooltip mode.
+  const isStackedBar =
+    visual.display === 'bar' && timeSeriesMapping.some((s) => s?.type === 'bar' && s.stack === 'all');
 
   // Turn on tooltip pinning by default but opt out for stacked bar or if explicitly set in tooltip panel spec
   let enablePinning = true;
@@ -494,6 +518,7 @@ export function TimeSeriesChartPanel(props: TimeSeriesChartProps): ReactElement 
                 height={height}
                 data={timeChartData}
                 seriesMapping={timeSeriesMapping}
+                annotations={annotations}
                 timeScale={timeScale}
                 yAxis={multipleYAxes ?? echartsYAxis}
                 format={format}
